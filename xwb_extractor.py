@@ -32,7 +32,9 @@ CODEC_WMA   = 3
 ADPCM_BLOCKALIGN_OFFSET = 22
 CHUNK = 65536
 
-CONFIG_FILENAME = "config.json"
+CONFIG_FILENAME  = "config.json"
+RECENT_FILENAME  = "recent_folders.json"
+MAX_RECENT       = 5
 DEFAULT_CONFIG = {
     "_readme": "Optional: map hex track names to friendly names. Example below.",
     "_example": {
@@ -629,6 +631,7 @@ def create_xwb(wav_paths, out_path, bank_name="CustomBank"):
 # ── GUI ──────────────────────────────────────────────────────────────────────
 
 BG        = "#1a1a2e"   # main background — active tab
+RECENT    = "#0e2233"   # recent folders panel background
 TAB_INACT = "#120d1e"   # inactive tab background — dark purple
 PANEL     = "#16213e"
 ACCENT    = "#e94560"
@@ -656,10 +659,11 @@ class App(tk.Tk):
         self.config_var = tk.StringVar()
         self.status_var = tk.StringVar(value="Ready.")
 
-        self._stop_event  = threading.Event()
-        self._running     = False
-        self._track_names = {}
-        self._current_tab = "extract"
+        self._stop_event     = threading.Event()
+        self._running        = False
+        self._track_names    = {}
+        self._current_tab    = "extract"
+        self._recent_folders = self._load_recent()
 
         self._build_ui()
         self._center()
@@ -753,7 +757,16 @@ class App(tk.Tk):
                          hint="JSON file for custom track names  —  leave blank to skip",
                          is_file=True)
 
-        tk.Frame(p, bg=PANEL, height=1).pack(fill="x", padx=16, pady=(8, 10))
+        # Recent folders
+        recent_outer = tk.Frame(p, bg=RECENT)
+        recent_outer.pack(fill="x", padx=20, pady=(6, 2))
+        tk.Label(recent_outer, text="Recent folders:", font=FONT_SM,
+                 bg=RECENT, fg=MUTED).pack(anchor="w", padx=8, pady=(4, 2))
+        self._recent_frame = tk.Frame(recent_outer, bg=RECENT)
+        self._recent_frame.pack(fill="x", padx=8, pady=(0, 6))
+        self._refresh_recent_ui()
+
+        tk.Frame(p, bg=PANEL, height=1).pack(fill="x", padx=16, pady=(4, 10))
 
         # Progress
         prog_frame = tk.Frame(p, bg=BG)
@@ -807,12 +820,22 @@ class App(tk.Tk):
                                    state="disabled")
         self._stop_btn.pack(side="left", padx=(0, 8))
 
-        self._config_btn = tk.Button(btn_frame, text="⚙  Create Config Template",
-                                     font=FONT, bg=PANEL, fg=MUTED,
-                                     activebackground="#2a2a4e", activeforeground=TEXT,
-                                     relief="flat", bd=0, padx=20, pady=8,
-                                     cursor="hand2", command=self._create_config)
-        self._config_btn.pack(side="left")
+        self._open_btn = tk.Button(btn_frame, text="📂  Open Output Folder",
+                                   font=FONT, bg="#1a4a2e", fg=SUCCESS,
+                                   activebackground="#0f3320", activeforeground=SUCCESS,
+                                   relief="flat", bd=0, padx=20, pady=8,
+                                   cursor="hand2", command=self._open_output)
+        self._open_btn.pack(side="left")
+
+        # Small config template button in bottom right corner
+        bottom_frame = tk.Frame(p, bg=BG)
+        bottom_frame.pack(fill="x", padx=10, pady=(0, 4))
+        self._cfg_btn = tk.Button(bottom_frame, text="⚙ config template",
+                                  font=FONT_SM, bg=BG, fg=MUTED,
+                                  activebackground=BG, activeforeground=TEXT,
+                                  relief="flat", bd=0, padx=6, pady=2,
+                                  cursor="hand2", command=self._create_config)
+        self._cfg_btn.pack(side="right")
 
     # ── Convert tab ───────────────────────────────────────────────────────────
 
@@ -1355,6 +1378,60 @@ class App(tk.Tk):
 
     # ── Browse callbacks ─────────────────────────────────────────────────────
 
+    # ── Recent folders ───────────────────────────────────────────────────────
+
+    def _load_recent(self):
+        try:
+            p = os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), RECENT_FILENAME)
+            if os.path.exists(p):
+                with open(p) as f:
+                    return json.load(f)
+        except Exception:
+            pass
+        return []
+
+    def _save_recent(self, path):
+        if not path or not os.path.isdir(path):
+            return
+        if path in self._recent_folders:
+            self._recent_folders.remove(path)
+        self._recent_folders.insert(0, path)
+        self._recent_folders = self._recent_folders[:MAX_RECENT]
+        try:
+            p = os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), RECENT_FILENAME)
+            with open(p, "w") as f:
+                json.dump(self._recent_folders, f)
+        except Exception:
+            pass
+        self._refresh_recent_ui()
+
+    def _refresh_recent_ui(self):
+        for w in self._recent_frame.winfo_children():
+            w.destroy()
+        if not self._recent_folders:
+            tk.Label(self._recent_frame, text="No recent folders yet.",
+                     font=FONT_SM, bg=RECENT, fg=MUTED).pack(anchor="w")
+            return
+        for path in self._recent_folders:
+            short = path if len(path) <= 55 else "..." + path[-52:]
+            btn = tk.Button(self._recent_frame, text=short,
+                            font=FONT_SM, bg=RECENT, fg=SUCCESS,
+                            activebackground="#0a1a28", activeforeground=SUCCESS,
+                            relief="flat", bd=0, anchor="w", cursor="hand2",
+                            command=lambda p=path: self._use_recent(p))
+            btn.pack(fill="x", pady=1)
+
+    def _use_recent(self, path):
+        self.input_var.set(path)
+        self._log_line(f"Recent folder selected: {path}", "info")
+
+    def _open_output(self):
+        path = self.output_var.get().strip()
+        if path and os.path.isdir(path):
+            os.startfile(path)
+        else:
+            messagebox.showerror("Error", "No valid output folder selected.")
+
     def _browse_input(self):
         path = filedialog.askdirectory(title="Select folder containing .xwb files")
         if path:
@@ -1443,6 +1520,8 @@ class App(tk.Tk):
         config_path = self.config_var.get().strip()
         if config_path and os.path.isfile(config_path):
             self._load_config(config_path)
+
+        self._save_recent(input_folder)
 
         thread = threading.Thread(
             target=self._run,
