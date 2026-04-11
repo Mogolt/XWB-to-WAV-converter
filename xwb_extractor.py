@@ -651,7 +651,7 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("XWB → WAV Extractor")
-        self.resizable(False, False)
+        self.resizable(True, True)
         self.configure(bg=BG)
 
         self.input_var  = tk.StringVar()
@@ -685,6 +685,10 @@ class App(tk.Tk):
                  bg=BG, fg=TEXT).pack(side="left")
         tk.Label(header, text="for RE4 & XACT games", font=FONT_SM,
                  bg=BG, fg=MUTED).pack(side="left", padx=(10, 0), pady=(4, 0))
+        tk.Button(header, text="?", font=FONT_BIG,
+                  bg=PANEL, fg=MUTED, activebackground=ACCENT, activeforeground=TEXT,
+                  relief="flat", bd=0, padx=10, pady=2,
+                  cursor="hand2", command=self._show_help).pack(side="right")
 
         # ── Tab bar ──
         tab_bar = tk.Frame(self, bg=BG)
@@ -723,9 +727,73 @@ class App(tk.Tk):
         # Show extract tab by default
         self._switch_tab("extract")
 
+    def _show_help(self):
+        win = tk.Toplevel(self)
+        win.title("How to use")
+        win.configure(bg=BG)
+        win.resizable(False, False)
+        win.transient(self)
+        win.grab_set()
+
+        tk.Frame(win, bg=ACCENT, height=3).pack(fill="x")
+
+        content = tk.Frame(win, bg=BG)
+        content.pack(padx=24, pady=16)
+
+        sections = [
+            ("Extract",
+             "1. Set your XWB folder and output folder.\n"
+             "2. Optionally load a config.json for custom track names.\n"
+             "3. Click Extract All to dump every track from every .xwb file.\n"
+             "4. Tick Individual Extraction to browse a single XWB,\n"
+             "   preview tracks, and extract only the ones you want."),
+            ("Inject",
+             "1. Browse and load an XWB file.\n"
+             "2. Select a track from the list and preview it.\n"
+             "3. Browse a replacement WAV file.\n"
+             "4. Click Replace & Rebuild to overwrite or save to a new folder."),
+            ("Convert",
+             "1. Add WAV files or a whole folder.\n"
+             "2. Set an output .xwb path and bank name.\n"
+             "3. Click Convert to XWB to bundle them into a new wave bank."),
+        ]
+
+        for title, body in sections:
+            tk.Label(content, text=title, font=FONT, bg=BG, fg=ACCENT,
+                     anchor="w").pack(anchor="w", pady=(8, 2))
+            tk.Label(content, text=body, font=FONT_SM, bg=BG, fg=TEXT,
+                     justify="left", anchor="w").pack(anchor="w", padx=(8, 0))
+
+        tk.Frame(content, bg=PANEL, height=1).pack(fill="x", pady=(14, 0))
+        tk.Button(content, text="Close", font=FONT_SM,
+                  bg=PANEL, fg=MUTED, activebackground=ACCENT, activeforeground=TEXT,
+                  relief="flat", bd=0, padx=16, pady=6,
+                  cursor="hand2", command=win.destroy).pack(pady=(10, 0))
+
+        win.update_idletasks()
+        x = self.winfo_x() + (self.winfo_width()  - win.winfo_width())  // 2
+        y = self.winfo_y() + (self.winfo_height() - win.winfo_height()) // 2
+        win.geometry(f"+{x}+{y}")
+
     def _switch_tab(self, tab):
+        # Stop any playing previews before switching
+        if WINSOUND_OK:
+            import winsound
+            winsound.PlaySound(None, winsound.SND_PURGE)
+        if getattr(self, "_inject_is_playing", False):
+            self._inject_is_playing = False
+            self._inject_preview_btn.config(text="▶  Preview Selected", fg=MUTED)
+            tmp = getattr(self, "_inject_temp_wav", None)
+            if tmp:
+                self.after(500, lambda: self._inject_cleanup_tmp(tmp))
+        if getattr(self, "_extract_is_playing", False):
+            self._extract_is_playing = False
+            self._extract_preview_btn.config(text="▶  Preview", fg=MUTED)
+            tmp = getattr(self, "_extract_temp_wav", None)
+            if tmp:
+                self.after(500, lambda: self._extract_cleanup_tmp(tmp))
+
         self._current_tab = tab
-        # Swap frames
         self._extract_frame.pack_forget()
         self._convert_frame.pack_forget()
         self._inject_frame.pack_forget()
@@ -735,7 +803,6 @@ class App(tk.Tk):
             self._convert_frame.pack(fill="both", expand=True)
         else:
             self._inject_frame.pack(fill="both", expand=True)
-        # Update tab button styles
         for key, btn in self._tab_btns.items():
             if key == tab:
                 btn.config(bg=BG, fg=TAB_FG_ACT)
@@ -747,18 +814,33 @@ class App(tk.Tk):
     def _build_extract_tab(self):
         p = self._extract_frame
 
-        # Folder pickers
-        self._folder_row(p, "XWB Folder (input):", self.input_var,
+        # ── Two-column layout with draggable sash ──
+        self._extract_pane = tk.PanedWindow(p, orient="horizontal",
+                                             bg=PANEL, sashwidth=8,
+                                             sashrelief="flat", bd=0,
+                                             handlesize=0)
+        self._extract_pane.pack(fill="both", expand=True)
+
+        left = tk.Frame(self._extract_pane, bg=BG)
+        self._extract_pane.add(left, minsize=380, stretch="always")
+
+        self._extract_right = tk.Frame(self._extract_pane, bg=BG, width=280)
+        self._extract_right.pack_propagate(False)
+        # Right panel added to pane only when checkbox is ticked
+        self._extract_divider = None  # not used with PanedWindow
+
+        # ── LEFT: folder pickers ──
+        self._folder_row(left, "XWB Folder (input):", self.input_var,
                          self._browse_input, hint="Folder containing your .xwb files")
-        self._folder_row(p, "Output Folder:", self.output_var,
+        self._folder_row(left, "Output Folder:", self.output_var,
                          self._browse_output, hint="Where extracted WAV files will be saved")
-        self._folder_row(p, "Config File (optional):", self.config_var,
+        self._folder_row(left, "Config File (optional):", self.config_var,
                          self._browse_config,
                          hint="JSON file for custom track names  —  leave blank to skip",
                          is_file=True)
 
         # Recent folders
-        recent_outer = tk.Frame(p, bg=RECENT)
+        recent_outer = tk.Frame(left, bg=RECENT)
         recent_outer.pack(fill="x", padx=20, pady=(6, 2))
         tk.Label(recent_outer, text="Recent folders:", font=FONT_SM,
                  bg=RECENT, fg=MUTED).pack(anchor="w", padx=8, pady=(4, 2))
@@ -766,10 +848,10 @@ class App(tk.Tk):
         self._recent_frame.pack(fill="x", padx=8, pady=(0, 6))
         self._refresh_recent_ui()
 
-        tk.Frame(p, bg=PANEL, height=1).pack(fill="x", padx=16, pady=(4, 10))
+        tk.Frame(left, bg=PANEL, height=1).pack(fill="x", padx=16, pady=(6, 8))
 
         # Progress
-        prog_frame = tk.Frame(p, bg=BG)
+        prog_frame = tk.Frame(left, bg=BG)
         prog_frame.pack(fill="x", padx=20, pady=(0, 4))
         self._prog_label = tk.Label(prog_frame, text="", font=FONT_SM, bg=BG, fg=MUTED)
         self._prog_label.pack(side="right")
@@ -779,14 +861,14 @@ class App(tk.Tk):
         style.configure("Custom.Horizontal.TProgressbar",
                         troughcolor=PANEL, background=ACCENT,
                         bordercolor=PANEL, lightcolor=ACCENT, darkcolor=ACCENT)
-        self._progress = ttk.Progressbar(p, style="Custom.Horizontal.TProgressbar",
-                                          length=560, mode="determinate")
-        self._progress.pack(padx=20, pady=(0, 10))
+        self._progress = ttk.Progressbar(left, style="Custom.Horizontal.TProgressbar",
+                                          mode="determinate")
+        self._progress.pack(fill="x", padx=20, pady=(0, 8))
 
         # Log
-        log_frame = tk.Frame(p, bg=PANEL, bd=0)
-        log_frame.pack(fill="both", padx=20, pady=(0, 10))
-        self._log = tk.Text(log_frame, width=72, height=14, font=FONT_SM,
+        log_frame = tk.Frame(left, bg=PANEL, bd=0)
+        log_frame.pack(fill="both", expand=True, padx=20, pady=(0, 8))
+        self._log = tk.Text(log_frame, font=FONT_SM,
                             bg=PANEL, fg=TEXT, insertbackground=TEXT,
                             relief="flat", bd=8, state="disabled",
                             wrap="word", cursor="arrow")
@@ -802,40 +884,363 @@ class App(tk.Tk):
         self._log.tag_configure("heading", foreground=TEXT)
 
         # Buttons
-        btn_frame = tk.Frame(p, bg=BG)
-        btn_frame.pack(pady=(0, 16))
+        btn_frame = tk.Frame(left, bg=BG)
+        btn_frame.pack(pady=(0, 10), padx=20, anchor="w")
 
-        self._start_btn = tk.Button(btn_frame, text="▶  Start Extraction",
+        self._start_btn = tk.Button(btn_frame, text="▶  Extract All",
                                     font=FONT, bg=ACCENT, fg=TEXT,
                                     activebackground="#c73652", activeforeground=TEXT,
-                                    relief="flat", bd=0, padx=20, pady=8,
+                                    relief="flat", bd=0, padx=14, pady=8,
                                     cursor="hand2", command=self._start)
-        self._start_btn.pack(side="left", padx=(0, 8))
+        self._start_btn.pack(side="left", padx=(0, 6))
 
         self._stop_btn = tk.Button(btn_frame, text="■  Stop",
                                    font=FONT, bg=PANEL, fg=MUTED,
                                    activebackground="#2a2a4e", activeforeground=TEXT,
-                                   relief="flat", bd=0, padx=20, pady=8,
+                                   relief="flat", bd=0, padx=14, pady=8,
                                    cursor="hand2", command=self._stop,
                                    state="disabled")
-        self._stop_btn.pack(side="left", padx=(0, 8))
+        self._stop_btn.pack(side="left", padx=(0, 6))
 
-        self._open_btn = tk.Button(btn_frame, text="📂  Open Output Folder",
+        self._open_btn = tk.Button(btn_frame, text="📂  Open Output",
                                    font=FONT, bg="#1a4a2e", fg=SUCCESS,
                                    activebackground="#0f3320", activeforeground=SUCCESS,
-                                   relief="flat", bd=0, padx=20, pady=8,
+                                   relief="flat", bd=0, padx=14, pady=8,
                                    cursor="hand2", command=self._open_output)
         self._open_btn.pack(side="left")
 
-        # Small config template button in bottom right corner
-        bottom_frame = tk.Frame(p, bg=BG)
-        bottom_frame.pack(fill="x", padx=10, pady=(0, 4))
-        self._cfg_btn = tk.Button(bottom_frame, text="⚙ config template",
+        # Config template button
+        bottom_left = tk.Frame(left, bg=BG)
+        bottom_left.pack(fill="x", padx=10, pady=(0, 4))
+
+        self._indiv_var = tk.BooleanVar(value=False)
+        self._indiv_btn = tk.Button(bottom_left, text="⊞  Individual Extraction",
+                                    font=FONT_SM, bg=PANEL, fg=MUTED,
+                                    activebackground=PANEL, activeforeground=TEXT,
+                                    relief="flat", bd=0, padx=10, pady=4,
+                                    cursor="hand2", command=self._toggle_track_browser)
+        self._indiv_btn.pack(side="left", padx=(10, 0))
+        self._indiv_pulse_step = 0
+        self._indiv_pulse_id   = None
+        self._start_indiv_pulse()
+
+        self._cfg_btn = tk.Button(bottom_left, text="⚙ config template",
                                   font=FONT_SM, bg=BG, fg=MUTED,
                                   activebackground=BG, activeforeground=TEXT,
                                   relief="flat", bd=0, padx=6, pady=2,
                                   cursor="hand2", command=self._create_config)
         self._cfg_btn.pack(side="right")
+
+        # ── RIGHT: track browser (hidden by default) ──
+        r = self._extract_right
+        tk.Label(r, text="Track Browser", font=FONT,
+                 bg=BG, fg=TEXT).pack(anchor="w", padx=12, pady=(14, 0))
+        tk.Label(r, text="preview & selective extract",
+                 font=FONT_SM, bg=BG, fg=MUTED).pack(anchor="w", padx=12, pady=(0, 6))
+
+        # Single XWB picker
+        xwb_pick = tk.Frame(r, bg=BG)
+        xwb_pick.pack(fill="x", padx=12, pady=(0, 4))
+        self._extract_xwb_var = tk.StringVar()
+        tk.Entry(xwb_pick, textvariable=self._extract_xwb_var, font=FONT_SM,
+                 bg=PANEL, fg=TEXT, insertbackground=TEXT,
+                 relief="flat", bd=4).pack(side="left", fill="x", expand=True, padx=(0, 4))
+        tk.Button(xwb_pick, text="Browse", font=FONT_SM,
+                  bg=PANEL, fg=MUTED, activebackground="#2a2a4e",
+                  activeforeground=TEXT, relief="flat", bd=0,
+                  padx=8, pady=4, cursor="hand2",
+                  command=self._extract_browse_single_xwb).pack(side="left")
+
+        # Track listbox — fills remaining vertical space
+        list_outer = tk.Frame(r, bg=PANEL)
+        list_outer.pack(fill="both", expand=True, padx=12, pady=(0, 4))
+        self._extract_track_listbox = tk.Listbox(list_outer,
+            font=FONT_SM, bg=PANEL, fg=TEXT,
+            selectbackground=ACCENT, selectforeground=TEXT,
+            relief="flat", bd=8, activestyle="none",
+            highlightthickness=0, selectmode="extended")
+        self._extract_track_listbox.pack(side="left", fill="both", expand=True)
+        track_scroll = tk.Scrollbar(list_outer, command=self._extract_track_listbox.yview,
+                                    bg=PANEL, troughcolor=PANEL, relief="flat")
+        track_scroll.pack(side="right", fill="y")
+        self._extract_track_listbox.configure(yscrollcommand=track_scroll.set)
+        self._extract_track_listbox.bind("<<ListboxSelect>>", self._extract_on_track_select)
+
+        # Preview button + status
+        self._extract_preview_btn = tk.Button(r, text="▶  Preview",
+                                              font=FONT_SM, bg=PANEL, fg=MUTED,
+                                              activebackground="#2a2a4e", activeforeground=TEXT,
+                                              relief="flat", bd=0, padx=12, pady=5,
+                                              cursor="hand2",
+                                              command=self._extract_preview,
+                                              state="disabled")
+        self._extract_preview_btn.pack(anchor="w", padx=12, pady=(0, 4))
+
+        self._extract_sel_lbl = tk.Label(r, text="Load an XWB to browse",
+                                         font=FONT_SM, bg=BG, fg=MUTED,
+                                         wraplength=240, justify="left")
+        self._extract_sel_lbl.pack(anchor="w", padx=12, pady=(0, 4))
+
+        self._extract_sel_btn = tk.Button(r, text="▶  Extract Selected",
+                                          font=FONT_SM, bg="#1a3a4e", fg=SUCCESS,
+                                          activebackground="#0f2a38", activeforeground=SUCCESS,
+                                          relief="flat", bd=0, padx=12, pady=6,
+                                          cursor="hand2",
+                                          command=self._extract_selected_tracks,
+                                          state="disabled")
+        self._extract_sel_btn.pack(anchor="w", padx=12, pady=(0, 6))
+
+        # Rename field — only shown when exactly 1 track is selected
+        self._extract_rename_frame = tk.Frame(r, bg=BG)
+        tk.Label(self._extract_rename_frame, text="rename to:",
+                 font=FONT_SM, bg=BG, fg=MUTED).pack(anchor="w")
+        rename_row = tk.Frame(self._extract_rename_frame, bg=BG)
+        rename_row.pack(fill="x")
+        self._extract_rename_var = tk.StringVar()
+        self._extract_rename_entry = tk.Entry(rename_row, textvariable=self._extract_rename_var,
+                                              font=FONT_SM, bg=PANEL, fg=TEXT,
+                                              insertbackground=TEXT, relief="flat", bd=4)
+        self._extract_rename_entry.pack(side="left", fill="x", expand=True)
+        tk.Label(rename_row, text=".wav", font=FONT_SM, bg=BG, fg=MUTED).pack(side="left", padx=(2, 0))
+
+        # Track browser state
+        self._extract_tracks      = []
+        self._extract_xwb_path    = None
+        self._extract_is_playing  = False
+        self._extract_temp_wav    = None
+
+    def _toggle_track_browser(self):
+        self._indiv_var.set(not self._indiv_var.get())
+        if self._indiv_var.get():
+            # Stop pulse, lock to solid accent
+            self._stop_indiv_pulse()
+            self._indiv_btn.config(bg=ACCENT, fg=TEXT,
+                                   activebackground="#c73652", activeforeground=TEXT,
+                                   text="⊠  Individual Extraction")
+            self._extract_pane.add(self._extract_right, minsize=220, width=280, stretch="never")
+            self.update_idletasks()
+            needed_w = self.winfo_reqwidth()
+            current_h = self.winfo_height()
+            if self.winfo_width() < needed_w:
+                self.geometry(f"{needed_w}x{current_h}")
+        else:
+            # Resume pulse
+            self._indiv_btn.config(text="⊞  Individual Extraction",
+                                   activebackground=PANEL, activeforeground=TEXT)
+            self._start_indiv_pulse()
+            self._extract_pane.remove(self._extract_right)
+
+    def _start_indiv_pulse(self):
+        # Pulse between PANEL and a slightly brighter highlight
+        PULSE_COLORS = [
+            ("#1e2a3a", "#6a7a9a"),
+            ("#243040", "#8a9aba"),
+            ("#2a3850", "#aabada"),
+            ("#2e3e58", "#c0caea"),
+            ("#2a3850", "#aabada"),
+            ("#243040", "#8a9aba"),
+        ]
+        def _step():
+            if self._indiv_var.get():
+                return
+            bg, fg = PULSE_COLORS[self._indiv_pulse_step % len(PULSE_COLORS)]
+            self._indiv_btn.config(bg=bg, fg=fg)
+            self._indiv_pulse_step += 1
+            self._indiv_pulse_id = self.after(120, _step)
+        self._indiv_pulse_id = self.after(120, _step)
+
+    def _stop_indiv_pulse(self):
+        if self._indiv_pulse_id:
+            self.after_cancel(self._indiv_pulse_id)
+            self._indiv_pulse_id = None
+
+    # ── Extract tab — track browser ───────────────────────────────────────────
+
+    def _extract_browse_single_xwb(self):
+        path = filedialog.askopenfilename(
+            title="Select XWB file to browse",
+            filetypes=[("XWB files", "*.xwb"), ("All files", "*.*")]
+        )
+        if not path:
+            return
+        self._extract_xwb_var.set(path)
+        self._extract_xwb_path = path
+        self._extract_load_tracks(path)
+
+    def _extract_load_tracks(self, path):
+        self._extract_track_listbox.delete(0, "end")
+        self._extract_tracks = []
+        self._extract_preview_btn.config(state="disabled")
+        self._extract_sel_btn.config(state="disabled")
+        self._extract_sel_lbl.config(text="Loading tracks...")
+
+        def _load():
+            try:
+                tracks = _parse_xwb_tracks(path)
+                self.after(0, lambda: self._extract_populate_tracks(tracks))
+            except Exception as e:
+                self.after(0, lambda: self._extract_sel_lbl.config(
+                    text=f"Error: {e}", fg=ACCENT))
+
+        threading.Thread(target=_load, daemon=True).start()
+
+    def _extract_populate_tracks(self, tracks):
+        self._extract_tracks = tracks
+        self._extract_track_listbox.delete(0, "end")
+        for t in tracks:
+            dur     = t["duration"]
+            dur_str = f"{int(dur//60)}:{int(dur%60):02d}" if dur else "?"
+            size_kb = t["size"] / 1024
+            self._extract_track_listbox.insert("end",
+                f"  {t['index']:03d}   {dur_str:>6}   {size_kb:>7.0f} KB   {t['codec']}")
+        self._extract_sel_lbl.config(
+            text=f"{len(tracks)} tracks  —  Ctrl+click or drag to multi-select", fg=MUTED)
+
+    def _extract_on_track_select(self, event):
+        sel = self._extract_track_listbox.curselection()
+
+        # Auto-stop any playing preview when selection changes
+        if self._extract_is_playing:
+            import winsound
+            self._extract_is_playing = False
+            winsound.PlaySound(None, winsound.SND_PURGE)
+            self._extract_preview_btn.config(text="▶  Preview", fg=MUTED)
+            tmp = self._extract_temp_wav
+            if tmp:
+                self.after(500, lambda: self._extract_cleanup_tmp(tmp))
+
+        if not sel:
+            self._extract_preview_btn.config(state="disabled")
+            self._extract_sel_btn.config(state="disabled")
+            self._extract_rename_frame.pack_forget()
+            return
+
+        # Preview always enabled as long as at least 1 track is selected
+        self._extract_preview_btn.config(state="normal")
+        count = len(sel)
+        self._extract_sel_lbl.config(
+            text=f"{count} track{'s' if count > 1 else ''} selected", fg=SUCCESS)
+        self._extract_sel_btn.config(state="normal")
+        # Show rename box only for single selection
+        if count == 1:
+            self._extract_rename_var.set("")
+            self._extract_rename_frame.pack(anchor="w", padx=12, pady=(0, 12), fill="x")
+        else:
+            self._extract_rename_frame.pack_forget()
+
+    def _extract_preview(self):
+        if not WINSOUND_OK:
+            self._log_line("Preview is only available on Windows.", "skip")
+            return
+        sel = self._extract_track_listbox.curselection()
+        if not sel or not self._extract_xwb_path:
+            return
+
+        import winsound
+
+        # Toggle stop if already playing
+        if self._extract_is_playing:
+            self._extract_is_playing = False
+            winsound.PlaySound(None, winsound.SND_PURGE)
+            self._extract_preview_btn.config(text="▶  Preview", fg=MUTED)
+            tmp = self._extract_temp_wav
+            if tmp:
+                self.after(500, lambda: self._extract_cleanup_tmp(tmp))
+            return
+
+        self._extract_preview_btn.config(text="Loading...", state="disabled")
+        t = self._extract_tracks[sel[0]]
+
+        def _extract_and_play():
+            tmp = None
+            try:
+                tmp = tempfile.mktemp(suffix=".wav")
+                _extract_single_track(self._extract_xwb_path, t, tmp)
+                self._extract_temp_wav  = tmp
+                self._extract_is_playing = True
+
+                def _play():
+                    try:
+                        winsound.PlaySound(tmp, winsound.SND_FILENAME | winsound.SND_ASYNC)
+                        self._extract_preview_btn.config(
+                            text="■  Stop", fg=ACCENT, state="normal")
+                        dur_ms = int(t["duration"] * 1000) + 1000
+                        self.after(dur_ms, lambda: self._extract_auto_stop(tmp))
+                    except Exception:
+                        self._extract_is_playing = False
+                        self._extract_cleanup_tmp(tmp)
+                        self._extract_preview_btn.config(
+                            text="▶  Preview", fg=MUTED, state="normal")
+                self.after(0, _play)
+            except Exception:
+                self._extract_is_playing = False
+                self.after(0, lambda: self._extract_preview_btn.config(
+                    text="▶  Preview", fg=MUTED, state="normal"))
+
+        threading.Thread(target=_extract_and_play, daemon=True).start()
+
+    def _extract_auto_stop(self, tmp):
+        if self._extract_is_playing:
+            self._extract_is_playing = False
+            self._extract_preview_btn.config(text="▶  Preview", fg=MUTED)
+            self.after(500, lambda: self._extract_cleanup_tmp(tmp))
+
+    def _extract_cleanup_tmp(self, path):
+        try:
+            if path and os.path.exists(path):
+                os.remove(path)
+        except Exception:
+            pass
+
+    def _extract_selected_tracks(self):
+        sel = self._extract_track_listbox.curselection()
+        if not sel or not self._extract_xwb_path:
+            self._log_line("No tracks selected — load an XWB and select tracks first.", "skip")
+            return
+        output_folder = self.output_var.get().strip()
+        if not output_folder:
+            self._log_line("No output folder set.", "skip")
+            return
+
+        tracks_to_extract = [self._extract_tracks[i] for i in sel]
+        xwb_base = os.path.splitext(os.path.basename(self._extract_xwb_path))[0]
+        out_dir  = os.path.join(output_folder, xwb_base)
+        os.makedirs(out_dir, exist_ok=True)
+
+        names_for_bank = self._track_names.get(xwb_base, {})
+        custom_name    = self._extract_rename_var.get().strip() if len(sel) == 1 else ""
+
+        self._start_btn.config(state="disabled")
+        self._extract_sel_btn.config(state="disabled")
+        self._log_clear()
+        self._log_line(f"Extracting {len(tracks_to_extract)} selected track(s) from {xwb_base}.xwb...\n", "heading")
+
+        def _work():
+            ok = fail = 0
+            for t in tracks_to_extract:
+                hex_name  = f"{t['index']:08x}"
+                if custom_name:
+                    base_name = custom_name
+                else:
+                    base_name = names_for_bank.get(hex_name, hex_name)
+                ext       = ".wma" if t["codec"] == "WMA" else ".wav"
+                out_path  = os.path.join(out_dir, base_name + ext)
+                try:
+                    _extract_single_track(self._extract_xwb_path, t, out_path)
+                    self.after(0, lambda n=base_name: self._log_line(f"  {n}{ext}  OK", "ok"))
+                    ok += 1
+                except Exception as e:
+                    err = str(e)
+                    self.after(0, lambda n=base_name, e=err: self._log_line(f"  {n}  FAILED  ({e})", "error"))
+                    fail += 1
+
+            self.after(0, lambda: self._log_line(
+                f"\nDone!  {ok} extracted, {fail} failed.\nOutput: {out_dir}", "heading"))
+            self.after(0, lambda: self.status_var.set(f"Done!  {ok} extracted, {fail} failed."))
+            self.after(0, lambda: self._start_btn.config(state="normal"))
+            self.after(0, lambda: self._extract_sel_btn.config(state="normal"))
+
+        threading.Thread(target=_work, daemon=True).start()
 
     # ── Convert tab ───────────────────────────────────────────────────────────
 
@@ -1237,6 +1642,7 @@ class App(tk.Tk):
         self._inject_preview_btn.config(state="normal")
         if self._inject_wav_var.get():
             self._inject_replace_btn.config(state="normal")
+            self._start_inject_replace_pulse()
 
     def _inject_browse_wav(self):
         path = filedialog.askopenfilename(
@@ -1248,12 +1654,13 @@ class App(tk.Tk):
         self._inject_wav_var.set(path)
         if self._inject_selected is not None:
             self._inject_replace_btn.config(state="normal")
+            self._start_inject_replace_pulse()
 
     def _inject_preview(self):
         if not self._inject_selected or not self._inject_xwb_path:
             return
         if not WINSOUND_OK:
-            messagebox.showinfo("Preview", "Audio preview is only available on Windows.")
+            self._inject_status_lbl.config(text="Preview only available on Windows.", fg=WARNING)
             return
 
         import winsound
@@ -1316,23 +1723,24 @@ class App(tk.Tk):
 
     def _inject_replace(self):
         if not self._inject_selected or not self._inject_xwb_path:
+            self._inject_status_lbl.config(text="No track selected.", fg=WARNING)
             return
         wav_path = self._inject_wav_var.get().strip()
         if not wav_path or not os.path.isfile(wav_path):
-            messagebox.showerror("Error", "Please select a valid WAV file.")
+            self._inject_status_lbl.config(text="No valid WAV file selected.", fg=WARNING)
             return
 
         xwb_fname = os.path.basename(self._inject_xwb_path)
         if self._inject_separate_var.get():
             out_folder = self._inject_out_var.get().strip()
             if not out_folder or not os.path.isdir(out_folder):
-                messagebox.showerror("Error", "Please select a valid output folder.")
+                self._inject_status_lbl.config(text="No valid output folder selected.", fg=WARNING)
                 return
             out_path = os.path.join(out_folder, xwb_fname)
         else:
-            # Overwrite original
             out_path = self._inject_xwb_path
 
+        self._stop_inject_replace_pulse()
         self._inject_replace_btn.config(state="disabled", text="Working...")
         self._inject_status_lbl.config(text="Rebuilding XWB...", fg=MUTED)
 
@@ -1354,8 +1762,38 @@ class App(tk.Tk):
             finally:
                 self.after(0, lambda: self._inject_replace_btn.config(
                     state="normal", text="⬇  Replace & Rebuild"))
+                self.after(0, self._start_inject_replace_pulse)
 
         threading.Thread(target=_work, daemon=True).start()
+
+    def _start_inject_replace_pulse(self):
+        self._stop_inject_replace_pulse()
+        PULSE = ["#e94560", "#f05575", "#ff6585", "#f05575", "#e94560", "#d03550"]
+        def _step():
+            if not hasattr(self, "_inject_replace_pulse_step"):
+                self._inject_replace_pulse_step = 0
+            try:
+                state = self._inject_replace_btn.cget("state")
+                if str(state) == "disabled":
+                    return
+                color = PULSE[self._inject_replace_pulse_step % len(PULSE)]
+                self._inject_replace_btn.config(bg=color)
+                self._inject_replace_pulse_step += 1
+                self._inject_replace_pulse_id = self.after(130, _step)
+            except Exception:
+                pass
+        self._inject_replace_pulse_step = 0
+        self._inject_replace_pulse_id = self.after(130, _step)
+
+    def _stop_inject_replace_pulse(self):
+        pid = getattr(self, "_inject_replace_pulse_id", None)
+        if pid:
+            self.after_cancel(pid)
+            self._inject_replace_pulse_id = None
+        try:
+            self._inject_replace_btn.config(bg=ACCENT)
+        except Exception:
+            pass
 
     # ── Folder row ────────────────────────────────────────────────────────────
 
@@ -1498,15 +1936,15 @@ class App(tk.Tk):
         output_folder = self.output_var.get().strip()
 
         if not input_folder or not os.path.isdir(input_folder):
-            messagebox.showerror("Error", "Please select a valid XWB input folder.")
+            self._log_line("No valid XWB input folder selected.", "skip")
             return
         if not output_folder:
-            messagebox.showerror("Error", "Please select an output folder.")
+            self._log_line("No output folder set.", "skip")
             return
 
         xwb_files = sorted(f for f in os.listdir(input_folder) if f.lower().endswith(".xwb"))
         if not xwb_files:
-            messagebox.showerror("Error", f"No .xwb files found in:\n{input_folder}")
+            self._log_line(f"No .xwb files found in: {input_folder}", "skip")
             return
 
         self._running = True
