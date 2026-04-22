@@ -1,0 +1,35 @@
+# Python bytecode / caches
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# PyInstaller build artifacts
+build/
+dist/
+*.spec
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Game audio - never commit
+*.xwb
+*.xsb
+*.xgs
+*.wav
+*.wma
+
+# Local run state
+recent_folders.json
+config.json
+*.log
