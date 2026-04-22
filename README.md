@@ -8,7 +8,6 @@ The reason this exists: older XWB tools are either command-line only, crash on
 larger banks, or both. This one is a single Windows EXE — double-click, pick a
 folder, done.
 
-![screenshots placeholder](docs/screenshots/)
 
 ## Features
 
