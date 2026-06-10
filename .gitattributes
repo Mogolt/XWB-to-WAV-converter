@@ -1,0 +1,19 @@
+# Normalize line endings (stops CRLF/LF warnings on Windows)
+* text=auto
+
+# C# / XAML sources
+*.cs text
+*.xaml text
+*.csproj text
+*.ps1 text
+*.py text
+*.md text
+*.json text
+
+# Never touch binaries
+*.xwb binary
+*.wav binary
+*.wma binary
+*.exe binary
+*.png binary
+*.jpg binary
