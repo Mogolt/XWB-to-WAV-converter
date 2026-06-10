@@ -15,6 +15,12 @@ build/
 dist/
 *.spec
 
+# .NET build artifacts
+bin/
+obj/
+publish/
+*.user
+
 # OS / editor junk
 .DS_Store
 Thumbs.db

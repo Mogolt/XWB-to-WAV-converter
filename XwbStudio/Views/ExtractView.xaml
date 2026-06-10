@@ -1,0 +1,261 @@
+<UserControl x:Class="XwbStudio.Views.ExtractView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:XwbStudio">
+
+    <Grid Margin="24,8,24,14">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- ━━ Left column ━━ -->
+        <Grid Grid.Column="0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Folder pickers -->
+            <Grid Grid.Row="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="185"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="XWB Folder (input):"/>
+                <TextBox Grid.Row="0" Grid.Column="1" Style="{StaticResource DarkTextBox}" Margin="0,3"
+                         Text="{Binding InputFolder, UpdateSourceTrigger=PropertyChanged}"
+                         Tag="Folder containing your .xwb files"/>
+                <Button Grid.Row="0" Grid.Column="2" Style="{StaticResource FlatButton}" Margin="6,3,0,3"
+                        Content="Browse" Command="{Binding BrowseInputCommand}"/>
+
+                <TextBlock Grid.Row="1" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Output Folder:"/>
+                <TextBox Grid.Row="1" Grid.Column="1" Style="{StaticResource DarkTextBox}" Margin="0,3"
+                         Text="{Binding OutputFolder, UpdateSourceTrigger=PropertyChanged}"
+                         Tag="Where extracted WAV files will be saved"/>
+                <Button Grid.Row="1" Grid.Column="2" Style="{StaticResource FlatButton}" Margin="6,3,0,3"
+                        Content="Browse" Command="{Binding BrowseOutputCommand}"/>
+
+                <TextBlock Grid.Row="2" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Config File (optional):"/>
+                <TextBox Grid.Row="2" Grid.Column="1" Style="{StaticResource DarkTextBox}" Margin="0,3"
+                         Text="{Binding ConfigPath, UpdateSourceTrigger=PropertyChanged}"
+                         Tag="JSON file for custom track names — leave blank to skip"/>
+                <Button Grid.Row="2" Grid.Column="2" Style="{StaticResource FlatButton}" Margin="6,3,0,3"
+                        Content="Browse" Command="{Binding BrowseConfigCommand}"/>
+            </Grid>
+
+            <!-- Recent folders -->
+            <Border Grid.Row="1" Background="{StaticResource RecentBrush}" CornerRadius="6" Margin="0,8,0,0" Padding="10,6">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource HintText}" Text="Recent folders:"/>
+                    <ItemsControl ItemsSource="{Binding RecentFolders}" Margin="0,2,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Style="{StaticResource LinkButton}" Content="{Binding}"
+                                        HorizontalAlignment="Stretch" Click="RecentClick">
+                                    <Button.ContentTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis"/>
+                                        </DataTemplate>
+                                    </Button.ContentTemplate>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Style="{StaticResource HintText}" Text="No recent folders yet." Margin="6,2,0,2">
+                        <TextBlock.Visibility>
+                            <Binding Path="RecentFolders.Count">
+                                <Binding.Converter>
+                                    <local:ZeroToVisibilityConverter/>
+                                </Binding.Converter>
+                            </Binding>
+                        </TextBlock.Visibility>
+                    </TextBlock>
+                </StackPanel>
+            </Border>
+
+            <!-- Progress -->
+            <Grid Grid.Row="2" Margin="0,10,0,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <ProgressBar Style="{StaticResource SlimProgress}" VerticalAlignment="Center"
+                             Maximum="{Binding ProgressMax}" local:Smooth.Target="{Binding Progress}"/>
+                <TextBlock Grid.Column="1" Style="{StaticResource HintText}" Margin="10,0,0,0"
+                           VerticalAlignment="Center" Text="{Binding ProgressText}"/>
+            </Grid>
+
+            <!-- Log -->
+            <Border Grid.Row="3" Background="{StaticResource PanelBrush}" CornerRadius="6">
+                <ScrollViewer x:Name="LogScroll" Margin="10,8" VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding Log}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Text}" TextWrapping="Wrap"
+                                           FontFamily="Consolas" FontSize="12">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Kind}" Value="Ok">
+                                                    <Setter Property="Foreground" Value="{StaticResource SuccessBrush}"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Kind}" Value="Skip">
+                                                    <Setter Property="Foreground" Value="{StaticResource WarningBrush}"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Kind}" Value="Error">
+                                                    <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Kind}" Value="Heading">
+                                                    <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Border>
+
+            <!-- Action buttons -->
+            <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,10,0,0">
+                <Button Style="{StaticResource AccentButton}" Content="▶  Extract All"
+                        Command="{Binding ExtractAllCommand}" IsEnabled="{Binding IsIdle}"/>
+                <Button Style="{StaticResource FlatButton}" Content="■  Stop" Margin="8,0,0,0"
+                        Command="{Binding StopCommand}" IsEnabled="{Binding IsRunning}"/>
+                <Button Style="{StaticResource SuccessButton}" Content="📂  Open Output" Margin="8,0,0,0"
+                        Command="{Binding OpenOutputCommand}"/>
+            </StackPanel>
+
+            <!-- Bottom row -->
+            <Grid Grid.Row="5" Margin="0,10,0,0">
+                <ToggleButton HorizontalAlignment="Left" IsChecked="{Binding IsBrowserOpen}">
+                    <ToggleButton.Style>
+                        <Style TargetType="ToggleButton" BasedOn="{StaticResource RevealToggle}">
+                            <Setter Property="Content" Value="⊞  Individual Extraction"/>
+                            <Style.Triggers>
+                                <Trigger Property="IsChecked" Value="True">
+                                    <Setter Property="Content" Value="⊠  Individual Extraction"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ToggleButton.Style>
+                </ToggleButton>
+                <Button Style="{StaticResource GhostButton}" HorizontalAlignment="Right"
+                        Content="⚙ config template" Command="{Binding CreateConfigCommand}"/>
+            </Grid>
+        </Grid>
+
+        <!-- ━━ Right column: track browser (revealed with a slide) ━━ -->
+        <Border x:Name="BrowserPanel" Grid.Column="1" Width="0" Opacity="0" ClipToBounds="True">
+            <Border Width="300" HorizontalAlignment="Left" Margin="14,0,0,0"
+                    Background="{StaticResource DeepBrush}" CornerRadius="8" Padding="12,10">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Style="{StaticResource SectionTitle}" Text="Track Browser"/>
+                    <TextBlock Grid.Row="1" Style="{StaticResource HintText}" Text="preview &amp; selective extract" Margin="0,0,0,8"/>
+
+                    <Grid Grid.Row="2" Margin="0,0,0,6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBox Style="{StaticResource DarkTextBox}"
+                                 Text="{Binding BrowserXwbPath, UpdateSourceTrigger=PropertyChanged}"
+                                 Tag="path to a single .xwb"/>
+                        <Button Grid.Column="1" Style="{StaticResource FlatButton}" Margin="6,0,0,0"
+                                Padding="10,6" Content="Browse" Command="{Binding BrowseSingleXwbCommand}"/>
+                    </Grid>
+
+                    <Border Grid.Row="3" Background="{StaticResource PanelBrush}" CornerRadius="6">
+                        <ListBox Style="{StaticResource DarkListBox}" SelectionMode="Extended"
+                                 ItemsSource="{Binding Tracks}"
+                                 ItemContainerStyle="{StaticResource TrackListItem}"
+                                 ItemTemplate="{StaticResource TrackRow}"/>
+                    </Border>
+
+                    <Button Grid.Row="4" Margin="0,8,0,4" HorizontalAlignment="Left"
+                            Command="{Binding PreviewCommand}">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource FlatButton}">
+                                <Setter Property="Content" Value="▶  Preview"/>
+                                <Setter Property="IsEnabled" Value="False"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasSelection}" Value="True">
+                                        <Setter Property="IsEnabled" Value="True"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsPreviewPlaying}" Value="True">
+                                        <Setter Property="Content" Value="■  Stop"/>
+                                        <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+
+                    <TextBlock Grid.Row="5" Style="{StaticResource HintText}" Margin="0,0,0,6"
+                               Text="{Binding BrowserHint}"
+                               Foreground="{Binding BrowserHintKind, Converter={StaticResource KindToBrush}}"/>
+
+                    <Button Grid.Row="6" HorizontalAlignment="Left" Content="▶  Extract Selected"
+                            Command="{Binding ExtractSelectedCommand}">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource SuccessButton}">
+                                <Setter Property="IsEnabled" Value="False"/>
+                                <Style.Triggers>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions>
+                                            <Condition Binding="{Binding HasSelection}" Value="True"/>
+                                            <Condition Binding="{Binding IsIdle}" Value="True"/>
+                                        </MultiDataTrigger.Conditions>
+                                        <Setter Property="IsEnabled" Value="True"/>
+                                    </MultiDataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+
+                    <StackPanel Grid.Row="7" Margin="0,8,0,0"
+                                Visibility="{Binding IsSingleSelection, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Style="{StaticResource HintText}" Text="rename to:"/>
+                        <Grid Margin="0,2,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox Style="{StaticResource DarkTextBox}"
+                                     Text="{Binding RenameTo, UpdateSourceTrigger=PropertyChanged}"
+                                     Tag="leave blank to keep hex name"/>
+                            <TextBlock Grid.Column="1" Style="{StaticResource HintText}" Text=".wav"
+                                       VerticalAlignment="Center" Margin="4,0,0,0"/>
+                        </Grid>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Border>
+    </Grid>
+</UserControl>

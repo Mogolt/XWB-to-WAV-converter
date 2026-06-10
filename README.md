@@ -1,4 +1,4 @@
-# XWB Tool
+# XWB Studio
 
 A modern GUI for extracting, injecting, and converting XWB (XACT wave bank)
 audio. Originally built to make RE4 (2005 PC) audio modding painless, but it
@@ -8,6 +8,10 @@ The reason this exists: older XWB tools are either command-line only, crash on
 larger banks, or both. This one is a single Windows EXE — double-click, pick a
 folder, done.
 
+**Version 2.0** is a ground-up rewrite in C#/WPF (previously Python/tkinter):
+same features and workflow, much smoother UI — animated tab transitions,
+eased progress, hardware-accelerated rendering — and a cleaner codebase
+underneath. The old Python version lives on in [`legacy/`](legacy/xwb_extractor.py).
 
 ## Features
 
@@ -20,24 +24,26 @@ folder, done.
 - **Inject** — load an XWB, select a track, preview, pick a replacement WAV,
   hit **Replace & Rebuild**. Writes the modified XWB in place or to a new
   folder.
-- **Convert** — bundle a list of WAVs (or a whole folder) into a new `.xwb`
-  wave bank with a custom bank name.
+- **Convert** — bundle a list of WAVs (or a whole folder — drag & drop works)
+  into a new `.xwb` wave bank with a custom bank name.
 - **Recent folders** shortcut for fast re-extraction across sessions.
 
 ## Supported games
 
 Built and tested against **Resident Evil 4 (2005 PC / Ultimate HD Edition)**.
-Works on XWB files from other XACT-based games too — the format is standard.
-The occasional game-specific oddity may surface; file an issue if you hit one.
+Works on XWB files from other XACT-based games too — the format is standard
+(little- and big-endian banks, format versions 1–46, compact banks, and banks
+embedded in container files). The occasional game-specific oddity may surface;
+file an issue if you hit one.
 
 ## Installation
 
 **Windows 10 / 11, x64.**
 
-1. Download `XWB.Tool.exe` from the
+1. Download `XwbStudio.exe` from the
    [latest release](https://github.com/Mogolt/XWB-to-WAV-converter/releases/latest).
-2. Run it. It's a single PyInstaller-packed EXE — no install, no dependencies,
-   no Python required on the target machine.
+2. Run it. Single self-contained EXE — no install, no dependencies, no .NET
+   required on the target machine.
 
 Portable by design. Put it anywhere and launch from there.
 
@@ -87,9 +93,33 @@ Portable by design. Put it anywhere and launch from there.
 2. Set the output `.xwb` path and a bank name.
 3. **Convert to XWB**.
 
+## Building from source
+
+Requires the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0).
+
+```powershell
+dotnet build XwbStudio/XwbStudio.csproj            # debug build
+dotnet run --project CoreTests/CoreTests.csproj    # round-trip tests
+dotnet publish XwbStudio/XwbStudio.csproj -c Release -r win-x64 `
+    --self-contained true -p:PublishSingleFile=true   # portable EXE
+```
+
+Project layout:
+
+```
+XwbStudio/
+├── Core/          binary format logic — parser, extractor, builder, injector
+├── Services/      audio preview (winmm), recent folders, track-name config
+├── ViewModels/    MVVM layer — all app behavior
+├── Views/         one XAML view per tab
+└── Themes/        dark theme + animated control styles
+CoreTests/         build → parse → extract → inject round-trip test
+legacy/            the original Python/tkinter version (1.x)
+```
+
 ## Not distributing game files
 
-XWB Tool contains **no** game audio. You must extract your own `.xwb` files
+XWB Studio contains **no** game audio. You must extract your own `.xwb` files
 from your own legally-owned copy of the game.
 
 ## License
