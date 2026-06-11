@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -11,6 +11,11 @@
     <Version>2.0.0</Version>
     <Product>XWB Studio</Product>
     <Description>XACT wave-bank toolkit — extract, convert and inject XWB audio</Description>
+    <!-- Bundle WPF's native DLLs (PresentationNative_cor3 etc.) into the
+         single-file exe; without this the published exe only runs when those
+         DLLs sit next to it. -->
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
   </PropertyGroup>
 
 </Project>
